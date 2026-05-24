@@ -27,6 +27,7 @@ qrcode[pil]>=7.4,<8.0
 
 # Web server
 gunicorn>=21.2,<23.0
+whitenoise>=6.5,<7.0
 
 # Admin UI
 django-grappelli>=2.15,<3.0
