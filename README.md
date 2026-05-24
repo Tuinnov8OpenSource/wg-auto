@@ -2,6 +2,8 @@
 
 A professional, web-based Django application designed to automate and manage WireGuard VPN server and peer configurations. It provides an intuitive admin panel, automatic QR code generation, client configuration delivery via email, and robust asynchronous task processing using Celery.
 
+![WireGuard Auto Admin Interface](docs/images/admin_preview.png)
+
 ## Features
 
 - **Automated Peer Onboarding**: Generates WireGuard configuration, keys, and QR codes automatically.
