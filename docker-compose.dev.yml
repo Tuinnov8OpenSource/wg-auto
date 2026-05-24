@@ -1,6 +1,9 @@
 services:
   web:
-    image: developerantony/wg-auto:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: wg-auto-app
     ports:
       - "8004:8004"
     env_file: .env
@@ -23,15 +26,12 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/admin/')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
 
   celery:
-    image: developerantony/wg-auto:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: wg-auto-app
     command: celery -A config worker --loglevel=info --concurrency=2
     env_file: .env
     network_mode: "host"
@@ -56,7 +56,10 @@ services:
     restart: unless-stopped
 
   celery-beat:
-    image: developerantony/wg-auto:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: wg-auto-app
     command: celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     env_file: .env
     environment:

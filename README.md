@@ -21,11 +21,13 @@ A professional, web-based Django application designed to automate and manage Wir
 
 ## Installation (Docker)
 
-1. Clone the repository.
-2. Run `cp .env.example .env` and customize your settings, especially the `DATABASE_PASSWORD`, `DJANGO_SECRET_KEY`, and `ENCRYPTION_KEY`.
-3. Bring up the containers:
+The fastest and most stable way to deploy WireGuard Auto is using our official pre-built Docker image (`developerantony/wg-auto:latest`).
+
+1. Download the production `docker-compose.yml` and `.env.example` to your server.
+2. Rename `.env.example` to `.env` and securely configure your `DATABASE_PASSWORD`, `DJANGO_SECRET_KEY`, and `ENCRYPTION_KEY`.
+3. Bring up the containers (this will automatically pull the image from Docker Hub):
    ```bash
-   docker-compose up -d --build
+   docker compose up -d
    ```
 4. Access the application on port `8004`.
 
