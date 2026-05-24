@@ -6,7 +6,7 @@ A professional, web-based Django application designed to automate and manage Wir
 
 ## What is this image?
 
-This is the official, production-ready image for **WireGuard Auto**. It is a multi-stage, hardened Docker container based on Python 3.11-slim, pre-loaded with `wireguard-tools`, `iproute2`, and `iptables`. It runs the core Django application, Celery workers, and Celery beat schedulers.
+This is the official, production-ready image for **WireGuard Auto**. It is a multi-stage, hardened Docker container based on `python:3.11-slim-bookworm`, pre-loaded with `wireguard-tools`, `iproute2`, `iptables`, and [WhiteNoise](https://whitenoise.readthedocs.io/) for zero-config static file serving.
 
 ## Features
 
@@ -15,6 +15,8 @@ This is the official, production-ready image for **WireGuard Auto**. It is a mul
 - **Split-Tunneling Support**: Automatically derives and handles split-tunnel settings.
 - **Background Processing**: Uses Celery to handle non-blocking asynchronous key generation safely.
 - **Host Networking**: Integrates seamlessly with your host kernel to bypass Docker NAT limitations for WireGuard UDP traffic.
+- **Zero-Config Static Files**: WhiteNoise serves CSS/JS/images directly from Gunicorn — no Nginx required.
+- **Auto-Provisioned Admin**: Default superuser is created automatically on first boot.
 
 ---
 
@@ -155,13 +157,14 @@ Start the application in the background:
 docker compose up -d
 ```
 
-### 4. Create an Admin User
-Once the containers are running, create your first superuser:
-```bash
-docker compose exec web python manage.py createsuperuser
-```
+### 4. Access the Admin Panel
+A default superuser is **created automatically** on first boot:
+*   **Username**: `wgauto`
+*   **Password**: `wgauto123`
 
-Navigate to `http://<your-server-ip>:8004` to log in and start managing your VPN!
+Navigate to `http://<your-server-ip>:8004/admin/` to log in and start managing your VPN!
+
+> ⚠️ **Change the default password immediately after first login.** You can customize default credentials via `DJANGO_SUPERUSER_USERNAME`, `DJANGO_SUPERUSER_PASSWORD`, and `DJANGO_SUPERUSER_EMAIL` in your `.env` file.
 
 ---
 
