@@ -1,13 +1,13 @@
 import os
 import subprocess
+import logging
 from django.conf import settings
 from django.core.cache import cache
 
 from wireguard.models import WireGuardPeer
 from wireguard.constants import WG_ACTIVE_PEERS_CACHE_KEY
-from .qr import generate_qr
 
-
+logger = logging.getLogger(__name__)
 
 WG_BIN = "/usr/bin/wg"
 
@@ -20,6 +20,7 @@ def get_active_peers():
     """
     Cached list of active WireGuard peers.
     Used by config generation and sync logic.
+    Does NOT cache private keys for security reasons.
     """
     peers = cache.get(WG_ACTIVE_PEERS_CACHE_KEY)
     if peers:
@@ -39,7 +40,6 @@ def get_active_peers():
             "name": peer.name,
             "email": peer.email,
             "public_key": peer.public_key,
-            "private_key": peer.get_private_key(),
             "allowed_ip": peer.allowed_ip,
             "server_id": peer.server_id,
             "server_endpoint": peer.get_endpoint(),
@@ -149,7 +149,7 @@ class WireGuardService:
             "peer",
             peer.public_key,
             "allowed-ips",
-            peer.allowed_ip,
+            f"{peer.allowed_ip}/32",
         ])
 
         cache.delete(WG_ACTIVE_PEERS_CACHE_KEY)

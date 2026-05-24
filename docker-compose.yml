@@ -1,25 +1,116 @@
-version: "3.9"
-
 services:
   web:
-    build: .
-    ports: ["8000:8000"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: wg-auto-app
+    ports:
+      - "8004:8004"
     env_file: .env
-    cap_add: [NET_ADMIN]
-    depends_on: [db, redis]
+    environment:
+      - DATABASE_HOST=db
+      - REDIS_HOST=redis
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+    volumes:
+      - static_data:/app/staticfiles
+      - wg_config:/etc/wireguard
+      - app_logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/admin/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   celery:
-    build: .
-    command: celery -A config worker -l info
+    image: wg-auto-app
+    command: celery -A config worker --loglevel=info --concurrency=2
     env_file: .env
-    depends_on: [redis, db]
+    network_mode: "host"
+    environment:
+      - DATABASE_HOST=127.0.0.1
+      - DATABASE_PORT=5433
+      - REDIS_HOST=127.0.0.1
+      - CELERY_BROKER_URL=redis://127.0.0.1:6380/0
+      - CELERY_RESULT_BACKEND=redis://127.0.0.1:6380/0
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - wg_config:/etc/wireguard
+      - app_logs:/app/logs
+    depends_on:
+      web:
+        condition: service_started
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  celery-beat:
+    image: wg-auto-app
+    command: celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    env_file: .env
+    environment:
+      - DATABASE_HOST=db
+      - REDIS_HOST=redis
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - app_logs:/app/logs
+    depends_on:
+      web:
+        condition: service_started
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
 
   redis:
-    image: redis:7
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:6380:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   db:
-    image: postgres:15
+    image: postgres:15-alpine
+    ports:
+      - "127.0.0.1:5433:5432"
     environment:
-      POSTGRES_DB: wireguard
-      POSTGRES_USER: wireguard
-      POSTGRES_PASSWORD: wireguard
+      POSTGRES_DB: ${DATABASE_NAME:-wireguard_db}
+      POSTGRES_USER: ${DATABASE_USER:-wireguard_user}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-wireguard_user} -d ${DATABASE_NAME:-wireguard_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:
+  static_data:
+  wg_config:
+  app_logs:

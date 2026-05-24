@@ -20,7 +20,7 @@ def get_smtp_settings(force_reload=False):
         "host": obj.host,
         "port": obj.port,
         "username": obj.username,
-        "password": obj.password,
+        "password": obj.get_password(),
         "from_email": obj.from_email,
     }
 

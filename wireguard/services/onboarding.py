@@ -1,7 +1,7 @@
 import logging
 import os
 import ipaddress
-import markdown  # Added for Markdown to HTML conversion
+import markdown
 
 from django.core.mail import EmailMultiAlternatives, get_connection
 from django.template.loader import render_to_string
@@ -13,28 +13,38 @@ from .server import WireGuardServerService
 
 logger = logging.getLogger(__name__)
 
+
+class OnboardingEmailError(Exception):
+    """Raised when the onboarding email fails to send, but infrastructure is ready."""
+    pass
+
 # ============================================================
 # PEER CONFIG GENERATION
 # ============================================================
 
 def generate_peer_config(peer) -> str:
-    """Generate WireGuard peer configuration."""
+    """Generate WireGuard peer configuration (client-side)."""
     private_key = peer.get_private_key()
     server = peer.get_server()
     if not server:
         raise ValueError("Peer has no assigned server")
 
-    raw_endpoint = (server.endpoint or server.public_ip or "").strip()
+    raw_endpoint = (server.endpoint or "").strip()
     if not raw_endpoint:
-        raise ValueError(f"Server {server.name} has no endpoint or public IP")
+        raise ValueError(f"Server {server.name} has no endpoint")
 
-    host_only = raw_endpoint.split(":")[0].strip()
-    endpoint = f"{host_only}:{int(server.port)}"
+    # Strip port from endpoint field if present, then clean trailing dots
+    host = raw_endpoint.split(":")[0].strip().rstrip(".")
+    if not host:
+        raise ValueError(f"Server {server.name} has an invalid endpoint: '{raw_endpoint}'")
+    endpoint = f"{host}:{int(server.port)}"
 
     mtu = server.mtu or 1420
     dns = peer.get_dns() or "8.8.8.8,8.8.4.4"
     keepalive = server.persistent_keepalive or 25
-    allowed_ips = peer.get_allowed_ips() or "0.0.0.0/0"
+
+    # Split-tunnel priority: peer override -> server setting -> auto derive
+    allowed_ips = peer.get_allowed_ips()
 
     return f"""[Interface]
 PrivateKey = {private_key}
@@ -54,16 +64,21 @@ PersistentKeepalive = {keepalive}
 # ============================================================
 
 def generate_server_config(server, private_key: str) -> str:
-    """Generate WireGuard server configuration (iptables-legacy only)."""
+    """
+    Generate WireGuard server configuration.
+    Uses nft-backed iptables (modern, correct).
+    """
     iface = ipaddress.ip_interface(server.server_address)
-    network_cidr = str(iface)
+
+    # IMPORTANT: NAT must use the *network*, not the interface IP
+    network_cidr = str(iface.network)
+
+    iface_name = server.interface or "wg0"
+    uplink = server.uplink_interface or "eth0"
 
     raw_endpoint = (server.endpoint or "").strip()
     endpoint_host = raw_endpoint.split(":")[0] if raw_endpoint else ""
     endpoint = f"{endpoint_host}:{server.port}" if endpoint_host else ""
-
-    iface_name = server.interface or "wg0"
-    uplink = server.uplink_interface or "eth0"
 
     lines = [
         "# =========================================================",
@@ -75,49 +90,42 @@ def generate_server_config(server, private_key: str) -> str:
         f"# Server Name: {server.name}",
         f"# Public Key: {server.public_key}",
         f"# Endpoint: {endpoint}",
-        f"Address = {network_cidr}",
+        f"Address = {iface}",
         f"ListenPort = {server.port}",
         f"PrivateKey = {private_key}",
     ]
-
-    if server.dns:
-        lines.append(f"DNS = {', '.join(d.strip() for d in server.dns.split(','))}")
 
     if server.mtu and server.mtu != 1420:
         lines.append(f"MTU = {server.mtu}")
 
     lines.extend([
         "",
-        "# Enable forwarding and NAT (iptables-legacy)",
-        f"PostUp = iptables-legacy -A FORWARD -i {iface_name} -j ACCEPT",
-        f"PostUp = iptables-legacy -A FORWARD -o {iface_name} -j ACCEPT",
-        f"PostUp = iptables-legacy -t nat -A POSTROUTING -s {network_cidr} -o {uplink} -j MASQUERADE",
+        "# Enable forwarding and NAT (nftables / iptables-nft)",
+        f"PostUp = iptables -A FORWARD -i {iface_name} -j ACCEPT",
+        f"PostUp = iptables -A FORWARD -o {iface_name} -j ACCEPT",
+        f"PostUp = iptables -t nat -A POSTROUTING -s {network_cidr} -o {uplink} -j MASQUERADE",
         "",
-        f"PostDown = iptables-legacy -D FORWARD -i {iface_name} -j ACCEPT",
-        f"PostDown = iptables-legacy -D FORWARD -o {iface_name} -j ACCEPT",
-        f"PostDown = iptables-legacy -t nat -D POSTROUTING -s {network_cidr} -o {uplink} -j MASQUERADE",
+        f"PostDown = iptables -D FORWARD -i {iface_name} -j ACCEPT",
+        f"PostDown = iptables -D FORWARD -o {iface_name} -j ACCEPT",
+        f"PostDown = iptables -t nat -D POSTROUTING -s {network_cidr} -o {uplink} -j MASQUERADE",
     ])
 
     peers = server.peers.filter(is_active=True)
-    if peers.exists():
-        lines.append("")
-        lines.append(f"# Active Peers ({peers.count()})")
-        lines.append("")
-        for peer in peers:
-            lines.extend([
-                "[Peer]",
-                f"# Name: {peer.name}",
-                f"# Email: {peer.email}",
-                f"# Platform: {peer.platform}",
-                f"PublicKey = {peer.public_key}",
-                f"AllowedIPs = {peer.allowed_ip}/32",
-            ])
-            if server.persistent_keepalive:
-                lines.append(f"PersistentKeepalive = {server.persistent_keepalive}")
-            lines.append("")
-    else:
-        lines.append("")
-        lines.append("# No active peers configured yet")
+    lines.append("")
+    lines.append(f"# Active Peers ({peers.count()})")
+    lines.append("")
+
+    for peer in peers:
+        lines.extend([
+            "[Peer]",
+            f"# Name: {peer.name}",
+            f"# Email: {peer.email}",
+            f"# Platform: {peer.platform}",
+            f"PublicKey = {peer.public_key}",
+            f"AllowedIPs = {peer.allowed_ip}/32",
+        ])
+        if server.persistent_keepalive:
+            lines.append(f"PersistentKeepalive = {server.persistent_keepalive}")
         lines.append("")
 
     lines.append("# End of WireGuard configuration")
@@ -127,12 +135,13 @@ def generate_server_config(server, private_key: str) -> str:
 # PEER ONBOARDING
 # ============================================================
 
-def onboard(peer_id: int):
-    """Full peer onboarding workflow: assign server, generate keys, config, QR, send email."""
+def _setup_peer_infrastructure(peer_id: int):
+    """
+    Idempotent infrastructure setup: assign server, generate keys, config, QR.
+    Returns (peer, conf_content, conf_filename) on success.
+    Safe to call multiple times — skips steps that are already done.
+    """
     from wireguard.models import WireGuardPeer
-    from wireguard.services.email import get_smtp_settings
-
-    logger.info("Starting onboarding for peer %s", peer_id)
 
     try:
         peer = WireGuardPeer.objects.get(id=peer_id)
@@ -143,94 +152,130 @@ def onboard(peer_id: int):
     server = peer.server or WireGuardServerService.get_default_server()
     if not peer.server:
         peer.server = server
-        peer.save()
+        peer.save(update_fields=["server"])
 
-    # Generate keys if missing
     if not peer.private_key_encrypted:
         private_key, public_key = WireGuardService.generate_keys()
         peer.set_private_key(private_key)
         peer.public_key = public_key
-        peer.save()
+        peer.save(update_fields=["private_key_encrypted", "public_key"])
 
-    # Generate peer config
     conf_content = generate_peer_config(peer)
     conf_filename = f"{peer.name}.conf"
 
-    # Generate QR code (non-blocking)
-    qr_path = None
     try:
         qr_path = generate_qr(str(peer.id), conf_content)
-        peer.qr_path = qr_path
-        peer.save()
+        if qr_path and peer.qr_path != qr_path:
+            peer.qr_path = qr_path
+            peer.save(update_fields=["qr_path"])
     except Exception as e:
         logger.warning("QR generation failed for peer %s: %s", peer.name, e)
 
-    # Send email if SMTP configured
+    return peer, conf_content, conf_filename
+
+
+def _send_onboarding_email(peer, conf_content: str, conf_filename: str):
+    """
+    Send the onboarding email with config and QR attachments.
+    Raises OnboardingEmailError on failure.
+    """
+    from wireguard.services.email import get_smtp_settings
+
     smtp = get_smtp_settings(force_reload=True)
     if not smtp:
         logger.warning("SMTP not configured — skipping email for peer %s", peer.name)
         return
 
+    # Validate SMTP host — catch common misconfiguration
+    host = smtp["host"].strip()
+    if not host:
+        logger.error("SMTP host is empty — cannot send email")
+        return
+    if host == "smtp.google.com":
+        logger.warning(
+            "SMTP host is 'smtp.google.com' which is incorrect. "
+            "Did you mean 'smtp.gmail.com'? Attempting with corrected host."
+        )
+        host = "smtp.gmail.com"
+
+    server = peer.get_server()
+    endpoint_host = (server.endpoint or "").split(":")[0]
+    endpoint = f"{endpoint_host}:{server.port}"
+
+    guide_md = InstallationGuideService.generate(
+        GuideContext(
+            peer_name=peer.name,
+            server_endpoint=endpoint,
+            allowed_ips=peer.get_allowed_ips(),
+            dns=peer.get_dns(),
+            platform=peer.platform,
+        )
+    )
+
+    guide_html = markdown.markdown(
+        guide_md,
+        extensions=["fenced_code", "tables"]
+    )
+
+    html_body = render_to_string(
+        "wireguard/emails/onboarding.html",
+        {
+            "user_name": peer.name,
+            "endpoint": endpoint,
+            "allowed_ips": peer.get_allowed_ips(),
+            "dns": peer.get_dns(),
+            "guide": guide_html,
+            "server_name": server.name,
+        }
+    )
+
+    connection = get_connection(
+        backend="django.core.mail.backends.smtp.EmailBackend",
+        host=host,
+        port=smtp["port"],
+        username=smtp["username"],
+        password=smtp["password"],
+        use_tls=True,
+        timeout=15,
+        fail_silently=False,
+    )
+
+    email = EmailMultiAlternatives(
+        subject="Your Secure Network Setup",
+        body="Please view this email in HTML format.",
+        from_email=smtp["from_email"],
+        to=[peer.email],
+        connection=connection,
+    )
+
+    email.attach_alternative(html_body, "text/html")
+    email.attach(conf_filename, conf_content, "text/plain")
+
+    qr_path = peer.qr_path
+    if qr_path and os.path.exists(qr_path):
+        with open(qr_path, "rb") as f:
+            email.attach(f"qr_{peer.id}.png", f.read(), "image/png")
+
+    logger.info("Attempting to send email via %s:%s...", host, smtp["port"])
     try:
-        endpoint = f"{server.endpoint.split(':')[0]}:{server.port}"
-
-        # Generate HTML guide from Markdown
-        guide_markdown = InstallationGuideService.generate(
-            GuideContext(
-                peer_name=peer.name,
-                server_endpoint=endpoint,
-                allowed_ips=peer.get_allowed_ips(),
-                dns=peer.get_dns(),
-                platform=peer.platform,
-            )
-        )
-
-        # Ensure Markdown is converted to proper HTML
-        guide_html = markdown.markdown(
-            guide_markdown,
-            extensions=["fenced_code", "tables"]
-        )
-
-        html_body = render_to_string(
-            "wireguard/emails/onboarding.html",
-            {
-                "user_name": peer.name,
-                "endpoint": endpoint,
-                "allowed_ips": peer.get_allowed_ips(),
-                "dns": peer.get_dns(),
-                "guide": guide_html,  # HTML now, not raw Markdown
-                "server_name": server.name,
-            }
-        )
-
-        connection = get_connection(
-            backend="django.core.mail.backends.smtp.EmailBackend",
-            host=smtp["host"],
-            port=smtp["port"],
-            username=smtp["username"],
-            password=smtp["password"],
-            use_tls=True,
-            fail_silently=False,
-        )
-
-        email = EmailMultiAlternatives(
-            subject="Your Secure Network Setup",
-            body="Please view this email in HTML format.",
-            from_email=smtp["from_email"],
-            to=[peer.email],
-            connection=connection,
-        )
-
-        email.attach_alternative(html_body, "text/html")
-        email.attach(conf_filename, conf_content, "text/plain")
-
-        if qr_path and os.path.exists(qr_path):
-            with open(qr_path, "rb") as f:
-                email.attach(f"qr_{peer.id}.png", f.read(), "image/png")
-
-        sent = email.send()
-        logger.info("Onboarding email sent to %s (result=%s)", peer.email, sent)
-
+        email.send()
+        logger.info("Onboarding email successfully sent to %s", peer.email)
     except Exception as e:
         logger.exception("Failed to send onboarding email to peer %s: %s", peer.name, e)
-        raise
+        raise OnboardingEmailError(str(e)) from e
+
+
+def onboard(peer_id: int):
+    """
+    Full peer onboarding workflow: assign server, generate keys, config, QR, send email.
+
+    Infrastructure setup (keys, IP, QR) is idempotent and always succeeds first.
+    Email delivery is separated so retries don't re-run infrastructure steps.
+    """
+    logger.info("Starting onboarding for peer %s", peer_id)
+
+    # Phase 1: Infrastructure (idempotent, safe to repeat)
+    peer, conf_content, conf_filename = _setup_peer_infrastructure(peer_id)
+
+    # Phase 2: Email delivery (may fail and trigger retry)
+    _send_onboarding_email(peer, conf_content, conf_filename)

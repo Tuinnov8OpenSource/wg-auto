@@ -1,0 +1,61 @@
+# Environment and secrets
+.env
+.env.*
+env_backups/
+
+# Version control
+.git
+.gitattributes
+.gitignore
+
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+.run/
+*.swp
+*.swo
+
+# Docs and non-essential
+docs/
+scripts/
+docker-compose.yml
+
+README.md
+CONTRIBUTING.md
+LICENSE
+*.md
+!requirements.txt
+
+# Project specific
+logs/
+run/
+certs/
+staticfiles/
+.python-version
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs (created at runtime)
+logs/
+*.log
+
+# Runtime files
+run/
+*.pid
+*.sock
+
+# Database
+*.sql
+*.sqlite3
+pgdata/

@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from django.template.loader import render_to_string
-import markdown  # new import
 
 @dataclass
 class GuideContext:
@@ -31,7 +30,9 @@ class InstallationGuideService:
 
         template = f"wireguard/guides/{context.platform}.md"
 
-        # Render Markdown template as plain text first
+        # Render Markdown template as plain text. 
+        # We do NOT convert to HTML here to avoid double-conversion 
+        # down the line in the email generation.
         markdown_content = render_to_string(
             template,
             {
@@ -42,10 +43,4 @@ class InstallationGuideService:
             },
         )
 
-        # Convert Markdown to HTML
-        html_content = markdown.markdown(
-            markdown_content, 
-            extensions=["fenced_code", "tables"]
-        )
-
-        return html_content
+        return markdown_content

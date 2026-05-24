@@ -111,10 +111,9 @@ class Command(BaseCommand):
             f'PrivateKey = {private_key}',
         ]
 
-        # Add DNS if configured
-        if server.dns:
-            dns_servers = ', '.join([d.strip() for d in server.dns.split(',')])
-            lines.append(f'DNS = {dns_servers}')
+        # Note: DNS is purposefully not added to server config because
+        # WireGuard server interfaces do not use the DNS setting. DNS
+        # is only pushed to client configurations.
 
         # Add MTU if not default
         if server.mtu != 1420:
@@ -131,10 +130,10 @@ class Command(BaseCommand):
                 lines.append('[Peer]')
                 lines.append(f'# {peer.name} ({peer.platform})')
                 lines.append(f'PublicKey = {peer.public_key}')
-                lines.append(f'AllowedIPs = {peer.allowed_ip}')
+                lines.append(f'AllowedIPs = {peer.allowed_ip}/32')
                 
-                if peer.persistent_keepalive:
-                    lines.append(f'PersistentKeepalive = {peer.persistent_keepalive}')
+                if server.persistent_keepalive:
+                    lines.append(f'PersistentKeepalive = {server.persistent_keepalive}')
                 
                 lines.append('')
 

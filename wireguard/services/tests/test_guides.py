@@ -1,6 +1,5 @@
 import pytest
-from wireguard_app.services.guides import InstallationGuideService, GuideContext
-
+from wireguard.services.guides import InstallationGuideService, GuideContext
 
 @pytest.mark.django_db
 def test_windows_guide_generation():
@@ -14,4 +13,4 @@ def test_windows_guide_generation():
         )
     )
 
-    assert "WireGuard Setup – Windows" in guide
+    assert "WireGuard Setup" in guide

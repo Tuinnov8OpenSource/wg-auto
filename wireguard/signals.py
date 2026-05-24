@@ -1,6 +1,6 @@
 # wireguard/signals.py
 import logging
-from django.db.models.signals import post_save, post_delete
+from django.db.models.signals import post_save, pre_delete, post_delete
 from django.dispatch import receiver
 from django.core.cache import cache
 from .models import WireGuardPeer, WireGuardServer, SMTPSettings
@@ -15,45 +15,76 @@ logger = logging.getLogger(__name__)
 @receiver(post_save, sender=WireGuardPeer)
 def trigger_onboarding(sender, instance: WireGuardPeer, created, **kwargs):
     """
-    Trigger onboarding asynchronously for new peers or peers missing keys.
+    Trigger onboarding asynchronously for NEW peers only.
+    Internal saves during onboarding (update_fields) are ignored.
     """
-    needs_onboarding = created or (not instance.public_key or instance.public_key.strip() in ('', '-'))
-    if needs_onboarding:
-        from .tasks import onboard_peer
-        try:
-            onboard_peer.delay(instance.id)
-            logger.info("Queued onboarding task for peer %s", instance.name)
-        except Exception as e:
-            logger.exception("Failed to queue onboarding for peer %s: %s", instance.name, e)
+    if not created:
+        return
+
+    # Skip if this is an internal save with update_fields (shouldn't happen on create, but be safe)
+    if kwargs.get("update_fields") is not None:
+        return
+
+    from .tasks import onboard_peer
+    from django.db import transaction
+    try:
+        transaction.on_commit(lambda: onboard_peer.delay(instance.id))
+        logger.info("Queued onboarding task for peer %s on commit", instance.name)
+    except Exception as e:
+        logger.exception("Failed to queue onboarding for peer %s: %s", instance.name, e)
 
 
 @receiver(post_save, sender=WireGuardPeer)
 def trigger_peer_injection(sender, instance: WireGuardPeer, created, **kwargs):
     """
     Inject peer into live WireGuard interface on updates only.
+    Skips injection during onboarding infrastructure saves (update_fields).
     """
     if created:
         # Skip injection for new peers; onboarding will handle it
         logger.info("New peer %s created - injection will occur after onboarding", instance.name)
         return
 
+    # During onboarding, save() is called with update_fields for specific fields.
+    # These are internal state changes, NOT admin/user edits that need live injection.
+    update_fields = kwargs.get("update_fields")
+    if update_fields is not None:
+        onboarding_fields = {"server", "private_key_encrypted", "public_key", "qr_path"}
+        if set(update_fields).issubset(onboarding_fields):
+            logger.debug(
+                "Skipping peer injection for %s — onboarding save (fields: %s)",
+                instance.name, update_fields,
+            )
+            return
+
     from .tasks import inject_peer_live
+    from django.db import transaction
     try:
-        inject_peer_live.delay(instance.id)
-        logger.info("Queued peer injection task for %s", instance.name)
+        transaction.on_commit(lambda: inject_peer_live.delay(instance.id))
+        logger.info("Queued peer injection task for %s on commit", instance.name)
     except Exception as e:
         logger.exception("Failed to queue peer injection for %s: %s", instance.name, e)
 
 
-@receiver(post_delete, sender=WireGuardPeer)
+@receiver(pre_delete, sender=WireGuardPeer)
 def trigger_peer_removal(sender, instance: WireGuardPeer, **kwargs):
     """
-    When a peer is deleted, remove it from the live interface asynchronously.
+    When a peer is about to be deleted, remove it from the live interface.
+    Uses pre_delete so we can still read the instance data before it's gone.
     """
-    from .tasks import inject_peer_live
+    if not instance.public_key or instance.public_key.strip() in ('', '-'):
+        return
+
+    server = instance.get_server()
+    if not server:
+        return
+
+    from .tasks import remove_peer_live
     try:
-        instance.is_active = False  # Mark as inactive for removal
-        inject_peer_live.delay(instance.id)
+        remove_peer_live.delay(
+            public_key=instance.public_key,
+            interface=server.interface,
+        )
         logger.info("Queued peer removal task for %s", instance.name)
     except Exception as e:
         logger.exception("Failed to queue peer removal for %s: %s", instance.name, e)
@@ -82,9 +113,10 @@ def sync_wg_config_on_save(sender, instance: WireGuardServer, **kwargs):
     Regenerate wg0.conf asynchronously when server config changes.
     """
     from .tasks import sync_wg_config
+    from django.db import transaction
     try:
-        sync_wg_config.delay(instance.id)
-        logger.info("Queued WireGuard config sync for server %s", instance.name)
+        transaction.on_commit(lambda: sync_wg_config.delay(instance.id))
+        logger.info("Queued WireGuard config sync for server %s on commit", instance.name)
     except Exception as e:
         logger.exception("Failed to queue config sync for server %s: %s", instance.name, e)
 

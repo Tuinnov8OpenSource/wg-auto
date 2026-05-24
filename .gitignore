@@ -133,3 +133,4 @@ tmp/
 temp/
 *.tmp
 run/*.pid
+wireguard/static/qr/
