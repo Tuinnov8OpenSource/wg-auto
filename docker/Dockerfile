@@ -4,9 +4,12 @@
 # ============================================================
 
 # ── Stage 1: Build dependencies ─────────────────────────────
-FROM python:3.11-slim AS builder
+FROM python:3.11-slim-bookworm AS builder
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4 \
+    && sed -i 's|http://|https://|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
+       sed -i 's|http://|https://|g' /etc/apt/sources.list 2>/dev/null; true \
+    && apt-get update && apt-get install -y --no-install-recommends \
         gcc \
         libpq-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -17,10 +20,13 @@ RUN pip install --upgrade pip && \
     pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # ── Stage 2: Production image ───────────────────────────────
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 # Install runtime dependencies only
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4 \
+    && sed -i 's|http://|https://|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
+       sed -i 's|http://|https://|g' /etc/apt/sources.list 2>/dev/null; true \
+    && apt-get update && apt-get install -y --no-install-recommends \
         wireguard-tools \
         iproute2 \
         iptables \
@@ -51,6 +57,6 @@ RUN rm -rf .env .env.local .git venv __pycache__ \
 # Make entrypoint executable
 RUN chmod +x /app/docker/entrypoint.sh
 
-EXPOSE 8000
+EXPOSE 8004
 
 ENTRYPOINT ["/app/docker/entrypoint.sh"]
