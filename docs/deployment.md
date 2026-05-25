@@ -6,6 +6,24 @@ WireGuard Auto is deployed as a containerized microservices stack using Docker C
 > [!TIP]
 > The fastest way to deploy is by pulling the pre-built image directly from Docker Hub. No need to clone the repository or build locally.
 
+> [!NOTE]
+> For bare-metal or VM deployments without Docker, we provide an automated install script.
+
+### Bare-Metal Setup (Without Docker)
+
+1. Clone the repository and navigate into it:
+   ```bash
+   git clone https://github.com/Tuinnov8OpenSource/wg-auto.git
+   cd wg-auto
+   ```
+2. Run the bare-metal installation script as root:
+   ```bash
+   sudo bash scripts/install.sh
+   ```
+3. Follow the interactive prompts to initialize your database passwords and Django superuser. Once completed, your application will be available on port `80` via Nginx, and managed via `systemctl status wg-auto-supervisor`.
+
+For more details on what the script does, see the [Scripts Deployment Guide](../scripts/README.md).
+
 ## 2. Quick Start (Docker Hub Image)
 
 ### Step 1: Download configuration files

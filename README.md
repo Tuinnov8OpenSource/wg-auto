@@ -19,17 +19,41 @@ A professional, web-based Django application designed to automate and manage Wir
 - Docker & Docker Compose
 - Or standard Linux environment with Python 3.11+, PostgreSQL, Redis, and `wireguard-tools`.
 
-## Installation (Docker)
+## Installation
 
-The fastest and most stable way to deploy WireGuard Auto is using our official pre-built Docker image (`tuinnov8/wg-auto:latest`).
+### Option 1: Docker (Recommended)
 
-1. Download the production `docker-compose.yml` and `.env.example` to your server.
-2. Rename `.env.example` to `.env` and securely configure your `DATABASE_PASSWORD`, `DJANGO_SECRET_KEY`, and `ENCRYPTION_KEY`.
+The fastest and most stable way to deploy WireGuard Auto is using our official pre-built Docker image (`tuinnov8/wg-auto:latest`). You do not need to clone the repository.
+
+1. Download the production configuration files:
+   ```bash
+   wget https://raw.githubusercontent.com/Tuinnov8OpenSource/wg-auto/main/docker-compose.yml
+   wget https://raw.githubusercontent.com/Tuinnov8OpenSource/wg-auto/main/.env.example -O .env
+   ```
+2. Configure your environment variables (securely set `DATABASE_PASSWORD`, `DJANGO_SECRET_KEY`, and `ENCRYPTION_KEY`):
+   ```bash
+   nano .env
+   ```
 3. Bring up the containers (this will automatically pull the image from Docker Hub):
    ```bash
    docker compose up -d
    ```
-4. Access the application on port `8004`.
+4. Access the application at `http://<your-server-ip>:8004/admin/` with the default credentials (`wgauto` / `wgauto123`).
+
+### Option 2: Bare Metal / VM (Without Docker)
+
+If you prefer to run the application directly on your host operating system (Ubuntu/Debian) utilizing Nginx, PostgreSQL, Redis, and Supervisor, you can use our automated install script.
+
+1. Clone the repository and navigate into it:
+   ```bash
+   git clone https://github.com/Tuinnov8OpenSource/wg-auto.git
+   cd wg-auto
+   ```
+2. Run the bare-metal installation script as root:
+   ```bash
+   sudo bash scripts/install.sh
+   ```
+   *(This script will install all dependencies, configure databases, setup Gunicorn/Celery under Supervisor, and route traffic through Nginx).*
 
 ## Security
 
