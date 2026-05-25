@@ -1,7 +1,7 @@
 # WireGuard Auto: Deployment Guide
 
 ## 1. Overview
-WireGuard Auto is deployed as a containerized microservices stack using Docker Compose. The official pre-built image is available on Docker Hub at [`developerantony/wg-auto`](https://hub.docker.com/r/developerantony/wg-auto).
+WireGuard Auto is deployed as a containerized microservices stack using Docker Compose. The official pre-built image is available on Docker Hub at [`tuinnov8/wg-auto`](https://hub.docker.com/r/tuinnov8/wg-auto).
 
 > [!TIP]
 > The fastest way to deploy is by pulling the pre-built image directly from Docker Hub. No need to clone the repository or build locally.
@@ -11,8 +11,8 @@ WireGuard Auto is deployed as a containerized microservices stack using Docker C
 ### Step 1: Download configuration files
 ```bash
 mkdir wg-auto && cd wg-auto
-wget https://raw.githubusercontent.com/ngemuantony/wg-auto/main/docker-compose.yml
-wget https://raw.githubusercontent.com/ngemuantony/wg-auto/main/.env.example -O .env
+wget https://raw.githubusercontent.com/Tuinnov8OpenSource/wg-auto/main/docker-compose.yml
+wget https://raw.githubusercontent.com/Tuinnov8OpenSource/wg-auto/main/.env.example -O .env
 ```
 
 ### Step 2: Configure environment
@@ -34,7 +34,7 @@ nano .env
 ```bash
 docker compose up -d
 ```
-This will automatically pull `developerantony/wg-auto:latest` from Docker Hub.
+This will automatically pull `tuinnov8/wg-auto:latest` from Docker Hub.
 
 ### Step 4: Access the Admin Panel
 Navigate to `http://<your-server-ip>:8004/admin/` and log in with the default credentials:
@@ -49,7 +49,7 @@ Navigate to `http://<your-server-ip>:8004/admin/` and log in with the default cr
 If you are contributing to the project or need a custom build:
 
 ```bash
-git clone https://github.com/ngemuantony/wg-auto.git
+git clone https://github.com/Tuinnov8OpenSource/wg-auto.git
 cd wg-auto
 cp .env.example .env
 # Edit .env with your settings
@@ -77,14 +77,14 @@ The `Dockerfile` uses a two-stage build to minimize the production image size (~
 The `docker-compose.yml` orchestrates five services:
 
 ### 5.1. Web Service (`web`)
-*   **Image**: `developerantony/wg-auto:latest`
+*   **Image**: `tuinnov8/wg-auto:latest`
 *   **Role**: Handles inbound HTTP traffic and serves the Django Admin UI via Gunicorn.
 *   **Static Files**: Served directly by WhiteNoise middleware — no Nginx required.
 *   **Port**: `8004`
 *   **Capabilities**: Requires `NET_ADMIN` and `net.ipv4.ip_forward=1`.
 
 ### 5.2. Celery Worker (`celery`)
-*   **Image**: `developerantony/wg-auto:latest`
+*   **Image**: `tuinnov8/wg-auto:latest`
 *   **Role**: Manages WireGuard kernel interfaces (`wg0`, `wg1`) and executes background tasks (key generation, email delivery, config sync).
 *   **Networking**: Configured with `network_mode: "host"`. This is a **critical architectural requirement** — it bypasses Docker's userland proxy (`docker-proxy`), which mangles UDP headers and breaks WireGuard handshakes.
 *   **Capabilities**: Requires `NET_ADMIN` to interact directly with the host's network stack.

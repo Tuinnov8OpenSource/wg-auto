@@ -21,7 +21,7 @@ A professional, web-based Django application designed to automate and manage Wir
 
 ## Installation (Docker)
 
-The fastest and most stable way to deploy WireGuard Auto is using our official pre-built Docker image (`developerantony/wg-auto:latest`).
+The fastest and most stable way to deploy WireGuard Auto is using our official pre-built Docker image (`tuinnov8/wg-auto:latest`).
 
 1. Download the production `docker-compose.yml` and `.env.example` to your server.
 2. Rename `.env.example` to `.env` and securely configure your `DATABASE_PASSWORD`, `DJANGO_SECRET_KEY`, and `ENCRYPTION_KEY`.

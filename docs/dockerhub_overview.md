@@ -2,7 +2,7 @@
 
 A professional, web-based Django application designed to automate and manage WireGuard VPN server and peer configurations. It provides an intuitive admin panel, automatic QR code generation, client configuration delivery via email, and robust asynchronous task processing using Celery.
 
-![Admin UI](https://raw.githubusercontent.com/ngemuantony/wg-auto/main/docs/images/admin_preview.png)
+![Admin UI](https://raw.githubusercontent.com/Tuinnov8OpenSource/wg-auto/main/docs/images/admin_preview.png)
 
 ## What is this image?
 
@@ -32,7 +32,7 @@ version: '3.8'
 
 services:
   web:
-    image: developerantony/wg-auto:latest
+    image: tuinnov8/wg-auto:latest
     ports:
       - "8004:8004"
     env_file: .env
@@ -57,7 +57,7 @@ services:
     restart: unless-stopped
 
   celery:
-    image: developerantony/wg-auto:latest
+    image: tuinnov8/wg-auto:latest
     command: celery -A config worker --loglevel=info --concurrency=2
     env_file: .env
     network_mode: "host"
@@ -75,7 +75,7 @@ services:
     restart: unless-stopped
 
   celery-beat:
-    image: developerantony/wg-auto:latest
+    image: tuinnov8/wg-auto:latest
     command: celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     env_file: .env
     environment:
@@ -173,4 +173,4 @@ Navigate to `http://<your-server-ip>:8004/admin/` to log in and start managing y
 To bypass Docker's known limitations with routing UDP packets for WireGuard, the `celery` container (which manages the WireGuard kernel interface) is configured with `network_mode: "host"`. This physically attaches the `wg1` interface to your host machine, ensuring perfect performance and handshake reliability. 
 
 ## License
-MIT License. See the [GitHub Repository](https://github.com/ngemuantony/wg-auto) for full source code and documentation.
+MIT License. See the [GitHub Repository](https://github.com/Tuinnov8OpenSource/wg-auto) for full source code and documentation.
